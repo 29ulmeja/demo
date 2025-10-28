@@ -1,69 +1,293 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
-    </head>
-    <body>
-        <a-scene>
-            <a-camera>
-                <a-cursor fuse="true" fuse-timeout="2000"></a-cursor>
-            </a-camera>
-        <a-box
-        color="tomato"
-            position="0 1 -5"
-            depth="2"
-            height="2"
-            width="2"
-            animation="
-                property: rotation;
-                from: 0 0 0;
-                to: 0 360 0;
-                dur: 2000;
-                easing: linear;
-                loop: true;
-                startEvents:click;
-                dir: alternate;
-            "
-            animation__2="
-            property:scale;
-            from: 2 2 2;
-            to: .5 .5 .5;
-            loop: true;
-            startEvents:click;
-            dir: alternate;"
-            animation__3="
-            property:color;
-            from: tomato;
-            to: blue;
-            loop: true;
-            startEvents:click;
-            dir: alternate;"
-            >
-        </a-box>
-        <a-box
-            position="-3 6 -5"
-            depth="2"
-            height="2"
-            width="2"
-            animation="
-                property: rotation;
-                from: 0 0 0;
-                to: 0 360 0;
-                dur: 2000;
-                easing: linear;
-                loop: true;
-                startEvents:click;
-                dir: alternate;
-            "
-            animation__2="
-            property:scale;
-            from: 2 2 2;
-            to: .5 .5 .5;
-            loop: true;
-            startEvents:click;
-            dir: alternate;"
-            color="blue">
-        </a-box>
-        </a-scene>
-    </body>
+<head>
+    <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+    <script>
+        // Game logic component
+        AFRAME.registerComponent('whack-a-mole-game', {
+            init: function() {
+                this.score = 0;
+                this.gameTime = 30; // 30 seconds
+                this.specialMessageShown = false; // Track if special message has been shown
+                // Removed x=0 positions to avoid camera line of sight
+                this.molePositions = [
+                    {x: -2, z: -2}, {x: 2, z: -2},
+                    {x: -2, z: 0}, {x: 2, z: 0},
+                    {x: -2, z: 2}, {x: 2, z: 2}
+                ];
+                this.activeMoles = [];
+                this.gameRunning = false;
+                
+                this.startGame();
+            },
+            
+            startGame: function() {
+                this.gameRunning = true;
+                this.updateScore();
+                this.updateTimer();
+                this.spawnMoles();
+                
+                // Game timer
+                this.gameTimer = setInterval(() => {
+                    this.gameTime--;
+                    this.updateTimer();
+                    if (this.gameTime <= 0) {
+                        this.endGame();
+                    }
+                }, 1000);
+            },
+            
+            spawnMoles: function() {
+                this.moleSpawner = setInterval(() => {
+                    if (this.gameRunning && this.activeMoles.length < 3) {
+                        this.createMole();
+                    }
+                }, 1500);
+            },
+            
+            createMole: function() {
+                const scene = document.querySelector('a-scene');
+                const position = this.molePositions[Math.floor(Math.random() * this.molePositions.length)];
+                
+                // Check if position is already occupied
+                const occupied = this.activeMoles.some(mole => 
+                    mole.position.x === position.x && mole.position.z === position.z
+                );
+                
+                if (!occupied) {
+                    const mole = document.createElement('a-sphere');
+                    mole.setAttribute('position', `${position.x} 0.5 ${position.z}`);
+                    mole.setAttribute('radius', '0.3');
+                    mole.setAttribute('color', '#8B4513');
+                    mole.setAttribute('animation', 'property: position; to: ' + position.x + ' 1.2 ' + position.z + '; dur: 500');
+                    mole.setAttribute('class', 'clickable');
+                    mole.setAttribute('gaze-mole', '');
+                    
+                    scene.appendChild(mole);
+                    this.activeMoles.push({element: mole, position: position});
+                    
+                    // Auto-hide mole after 4 seconds
+                    setTimeout(() => {
+                        this.removeMole(mole);
+                    }, 4000);
+                }
+            },
+            
+            removeMole: function(moleElement) {
+                if (moleElement && moleElement.parentNode) {
+                    moleElement.parentNode.removeChild(moleElement);
+                    this.activeMoles = this.activeMoles.filter(mole => mole.element !== moleElement);
+                }
+            },
+            
+            hitMole: function(moleElement) {
+                this.score += 10;
+                this.updateScore();
+                this.removeMole(moleElement);
+                
+                // Check for special score milestone
+                this.checkSpecialScore();
+            },
+            
+            checkSpecialScore: function() {
+                if (this.score >= 130 && !this.specialMessageShown) {
+                    this.specialMessageShown = true;
+                    this.showSpecialMessage();
+                }
+            },
+            
+            showSpecialMessage: function() {
+                const specialText = document.querySelector('#specialMessage');
+                specialText.setAttribute('text', 'value: Who\'s a good boy!');
+                specialText.setAttribute('visible', 'true');
+                
+                // Hide the message after 3 seconds
+                setTimeout(() => {
+                    specialText.setAttribute('visible', 'false');
+                }, 3000);
+            },
+            
+            updateScore: function() {
+                document.querySelector('#score').setAttribute('text', 'value: Score: ' + this.score);
+            },
+            
+            updateTimer: function() {
+                document.querySelector('#timer').setAttribute('text', 'value: Time: ' + this.gameTime);
+            },
+            
+            endGame: function() {
+                this.gameRunning = false;
+                clearInterval(this.gameTimer);
+                clearInterval(this.moleSpawner);
+                
+                // Remove all active moles
+                this.activeMoles.forEach(mole => {
+                    this.removeMole(mole.element);
+                });
+                
+                document.querySelector('#gameOver').setAttribute('text', 'value: Game Over! Score: ' + this.score);
+                document.querySelector('#gameOver').setAttribute('visible', 'true');
+            }
+        });
+        
+        // Projectile component
+        AFRAME.registerComponent('projectile', {
+            schema: {
+                target: {type: 'vec3'}
+            },
+            
+            init: function() {
+                const targetPos = this.data.target;
+                const startPos = this.el.getAttribute('position');
+                
+                // Calculate flight time based on distance
+                const distance = Math.sqrt(
+                    Math.pow(targetPos.x - startPos.x, 2) + 
+                    Math.pow(targetPos.y - startPos.y, 2) + 
+                    Math.pow(targetPos.z - startPos.z, 2)
+                );
+                const flightTime = distance * 200; // Adjust speed here
+                
+                // Animate projectile to target
+                this.el.setAttribute('animation', {
+                    property: 'position',
+                    to: `${targetPos.x} ${targetPos.y} ${targetPos.z}`,
+                    dur: flightTime,
+                    easing: 'linear'
+                });
+                
+                // Remove projectile after animation
+                setTimeout(() => {
+                    if (this.el.parentNode) {
+                        this.el.parentNode.removeChild(this.el);
+                    }
+                }, flightTime + 100);
+            }
+        });
+        
+        // Gaze-based mole component
+        AFRAME.registerComponent('gaze-mole', {
+            init: function() {
+                this.gazeTimer = null;
+                this.isGazing = false;
+                this.originalColor = '#8B4513';
+                this.gazingColor = '#FF6347'; // Tomato red when being gazed at
+                
+                // Listen for cursor events
+                this.el.addEventListener('mouseenter', () => {
+                    this.startGazing();
+                });
+                
+                this.el.addEventListener('mouseleave', () => {
+                    this.stopGazing();
+                });
+            },
+            
+            startGazing: function() {
+                if (!this.isGazing) {
+                    this.isGazing = true;
+                    // Change color to show it's being gazed at
+                    this.el.setAttribute('color', this.gazingColor);
+                    
+                    // Start the half-second timer
+                    this.gazeTimer = setTimeout(() => {
+                        this.shootAtMole();
+                    }, 500); // 500ms = half a second
+                }
+            },
+            
+            stopGazing: function() {
+                if (this.isGazing) {
+                    this.isGazing = false;
+                    // Reset color
+                    this.el.setAttribute('color', this.originalColor);
+                    
+                    // Cancel the timer if gaze is broken
+                    if (this.gazeTimer) {
+                        clearTimeout(this.gazeTimer);
+                        this.gazeTimer = null;
+                    }
+                }
+            },
+            
+            shootAtMole: function() {
+                const scene = document.querySelector('a-scene');
+                const camera = document.querySelector('a-camera');
+                const cameraPos = camera.getAttribute('position');
+                const targetPos = this.el.getAttribute('position');
+                
+                // Create projectile
+                const projectile = document.createElement('a-sphere');
+                projectile.setAttribute('position', `${cameraPos.x} ${cameraPos.y} ${cameraPos.z - 0.5}`);
+                projectile.setAttribute('radius', '0.05');
+                projectile.setAttribute('color', 'white');
+                projectile.setAttribute('material', 'emissive: #ffffff; emissiveIntensity: 0.3');
+                projectile.setAttribute('projectile', `target: ${targetPos.x} ${targetPos.y} ${targetPos.z}`);
+                
+                scene.appendChild(projectile);
+                
+                // Hit the mole after a short delay (when projectile reaches target)
+                const distance = Math.sqrt(
+                    Math.pow(targetPos.x - cameraPos.x, 2) + 
+                    Math.pow(targetPos.y - cameraPos.y, 2) + 
+                    Math.pow(targetPos.z - cameraPos.z, 2)
+                );
+                const flightTime = distance * 200;
+                
+                setTimeout(() => {
+                    this.hitMole();
+                }, flightTime);
+            },
+            
+            hitMole: function() {
+                // Add explosion effect
+                this.el.setAttribute('animation__hit', 'property: scale; to: 1.5 1.5 1.5; dur: 100');
+                this.el.setAttribute('color', '#FFD700'); // Gold color for hit
+                
+                const game = document.querySelector('[whack-a-mole-game]').components['whack-a-mole-game'];
+                setTimeout(() => {
+                    game.hitMole(this.el);
+                }, 150);
+            },
+            
+            remove: function() {
+                // Clean up timer when component is removed
+                if (this.gazeTimer) {
+                    clearTimeout(this.gazeTimer);
+                }
+            }
+        });
+    </script>
+</head>
+<body>
+    <a-scene background="color: #191970" whack-a-mole-game cursor="rayOrigin: mouse">
+        <!-- Camera with cursor for gaze-based interaction -->
+        <a-camera position="0 1.6 3" look-controls wasd-controls>
+            <a-cursor 
+                position="0 0 -1"
+                geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
+                material="color: white; shader: flat"
+                raycaster="objects: .clickable; far: 20">
+            </a-cursor>
+        </a-camera>
+        
+        <!-- Ground -->
+        <a-plane position="0 0 0" rotation="-90 0 0" width="6" height="6" color="#228B22"></a-plane>
+        
+        <!-- UI Text -->
+        <a-text id="score" position="-2.5 3 -2" value="Score: 0" color="white" align="left"></a-text>
+        <a-text id="timer" position="2.5 3 -2" value="Time: 30" color="white" align="right"></a-text>
+        <a-text id="gameOver" position="0 2 -2" value="" color="red" align="center" visible="false"></a-text>
+        
+        <!-- Special milestone message -->
+        <a-text id="specialMessage" position="0 2.5 -2" value="" color="gold" align="center" visible="false"></a-text>
+        
+        <!-- Instructions -->
+        <a-text position="0 3.5 -2" value="Gaze at brown spheres for 0.5 seconds to shoot them!" color="yellow" align="center"></a-text>
+        
+        <!-- Lighting -->
+        <a-light type="ambient" color="#404040"></a-light>
+        <a-light type="directional" position="0 1 1" color="#ffffff"></a-light>
+    </a-scene>
+</body>
 </html>
